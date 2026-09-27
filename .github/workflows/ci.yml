@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: northline_test
+          MARIADB_USER: northline
+          MARIADB_PASSWORD: northline
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: mysql://northline:northline@127.0.0.1:3306/northline_test
+      # auth.ts rejects any secret shorter than 32 characters, so this must
+      # clear that bar or every authenticated request returns 500.
+      JWT_SECRET: ci-only-secret-change-me-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:push
+      - run: pnpm db:seed
+      - run: pnpm lint
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+
+      # PRODUCTION_PLAN #9 — the primary journey as a merge gate, run on every
+      # push and pull request.
+      #
+      # `playwright.config.ts` supplies the server's environment itself, so
+      # nothing here is duplicated: it forces NODE_ENV=development for the
+      # server process (test mode never calls app.listen(), production demands
+      # HTTPS APP_URL plus a storage backend) and blanks the Resend credentials
+      # so a CI registration can never place a live email call. DATABASE_URL
+      # and JWT_SECRET come from the job env above. `reuseExistingServer` is
+      # false in CI, so a stale server can never be silently picked up.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser E2E
+        run: pnpm e2e
+      # Traces and failure screenshots — `trace: "retain-on-failure"` — are
+      # what make a red run diagnosable without re-running it locally.
+      - name: Upload browser artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - run: docker build --tag northline-ci .

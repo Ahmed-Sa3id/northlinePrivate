@@ -1,0 +1,16 @@
+# `COPY . .` in the build stage would otherwise replace the Linux
+# node_modules that `pnpm install` just produced with the host's symlink
+# layout, which leaves typescript (and everything else) unresolvable.
+node_modules
+dist
+dist-server
+
+# Runtime state and local secrets must never enter the image.
+uploads
+audit
+.env
+.env.*
+*.log
+
+.git
+.github

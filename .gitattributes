@@ -1,0 +1,7 @@
+# Every file here is LF, deliberately, and has to stay that way on every
+# platform. `core.autocrlf=true` is set globally on this machine, so without
+# this pin a fresh Windows checkout would rewrite the tree to CRLF — which
+# Prettier rejects (its default `endOfLine` is `lf`, so `pnpm lint` would fail
+# on a freshly cloned repo) and which makes `scripts/*.sh` die under bash with
+# `$'\r': command not found`. `text=auto` leaves binaries untouched.
+* text=auto eol=lf

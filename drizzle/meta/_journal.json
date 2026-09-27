@@ -1,0 +1,111 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1789320039622,
+      "tag": "0000_soft_zaladane",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1789323500430,
+      "tag": "0001_tiresome_sentry",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1789497033222,
+      "tag": "0002_boring_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1789499200482,
+      "tag": "0003_aromatic_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1789740840655,
+      "tag": "0004_worried_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1789740961272,
+      "tag": "0005_careless_tyger_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1789762894518,
+      "tag": "0006_gifted_nocturne",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1789776215000,
+      "tag": "0007_secure_account_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1789778183000,
+      "tag": "0008_billing_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1789846589959,
+      "tag": "0009_tenant_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1789846590000,
+      "tag": "0010_business_audit_feature",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1789846591000,
+      "tag": "0011_subscription_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1790340000000,
+      "tag": "0012_billing_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1790340618608,
+      "tag": "0013_curved_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1790341095052,
+      "tag": "0014_big_magma",
+      "breakpoints": true
+    }
+  ]
+}

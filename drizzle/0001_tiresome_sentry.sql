@@ -1,0 +1,11 @@
+ALTER TABLE `attendance` ADD CONSTRAINT `attendance_userId_users_uuid_fk` FOREIGN KEY (`userId`) REFERENCES `users`(`uuid`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `attendance` ADD CONSTRAINT `attendance_projectId_projects_id_fk` FOREIGN KEY (`projectId`) REFERENCES `projects`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `expenses` ADD CONSTRAINT `expenses_projectId_projects_id_fk` FOREIGN KEY (`projectId`) REFERENCES `projects`(`id`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `expenses` ADD CONSTRAINT `expenses_recordedBy_users_uuid_fk` FOREIGN KEY (`recordedBy`) REFERENCES `users`(`uuid`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `issues` ADD CONSTRAINT `issues_projectId_projects_id_fk` FOREIGN KEY (`projectId`) REFERENCES `projects`(`id`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `issues` ADD CONSTRAINT `issues_reportedBy_users_uuid_fk` FOREIGN KEY (`reportedBy`) REFERENCES `users`(`uuid`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `material_transactions` ADD CONSTRAINT `material_transactions_materialId_materials_id_fk` FOREIGN KEY (`materialId`) REFERENCES `materials`(`id`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `material_transactions` ADD CONSTRAINT `material_transactions_recordedBy_users_uuid_fk` FOREIGN KEY (`recordedBy`) REFERENCES `users`(`uuid`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `materials` ADD CONSTRAINT `materials_projectId_projects_id_fk` FOREIGN KEY (`projectId`) REFERENCES `projects`(`id`) ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `project_assignments` ADD CONSTRAINT `project_assignments_userId_users_uuid_fk` FOREIGN KEY (`userId`) REFERENCES `users`(`uuid`) ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `project_assignments` ADD CONSTRAINT `project_assignments_projectId_projects_id_fk` FOREIGN KEY (`projectId`) REFERENCES `projects`(`id`) ON DELETE cascade ON UPDATE no action;

@@ -1,0 +1,2 @@
+ALTER TABLE `issues` MODIFY COLUMN `severity` enum('low','medium','high','critical') NOT NULL DEFAULT 'low';--> statement-breakpoint
+ALTER TABLE `materials` ADD `minimumStock` decimal(14,3) DEFAULT '0.000' NOT NULL;

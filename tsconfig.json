@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "express", "vite/client"],
+    "outDir": "dist"
+  },
+  "include": [
+    "server/**/*.ts",
+    "drizzle/**/*.ts",
+    "web/**/*.ts",
+    "web/**/*.tsx",
+    "e2e/**/*.ts",
+    "playwright.config.ts",
+    "vitest.config.ts"
+  ]
+}

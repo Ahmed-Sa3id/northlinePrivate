@@ -1,0 +1,150 @@
+name: Nightly backup
+
+# The scheduler half of backup/restore (see BACKUP-RESTORE.md).
+#
+# Two separate jobs, deliberately, because they answer two different
+# questions and one must not be able to suppress the other:
+#
+#   backup  dumps the real database. This is the run that has to keep working
+#           once there is production data, so it is kept free of everything
+#           else and reads DATABASE_URL from a repository secret. While that
+#           secret is absent it reports a clean notice rather than failing —
+#           otherwise the schedule is red every night until Wave 1 lands, and
+#           a permanently red check is one nobody reads.
+#
+#   drill   has value before any of that exists: seed a database, dump it with
+#           the production script, restore it into a second isolated database,
+#           then run the entire test suite against the restored copy. A dump
+#           that has never been restored is a guess, not a backup, and this
+#           turns the monthly manual drill in docs/BACKUP_DRILL.md into
+#           something that can rot no further than one day.
+#
+# Limits worth knowing about, so nobody mistakes this for a finished story:
+#   * GitHub pauses scheduled workflows after 60 days without repository
+#     activity, so a backup that matters needs that to be watched.
+#   * A GitHub-hosted runner can only reach a database that is reachable from
+#     the public internet. A private production database needs a self-hosted
+#     runner instead.
+#   * Artifacts are a copy in a *different* place from wherever the database
+#     runs, which is why they stand in for off-region storage today — but they
+#     are not encrypted by us. The encrypted cross-region copy is Wave 1C and
+#     is still waiting on storage credentials.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Back up the configured database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the MariaDB client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mariadb-client
+      - name: Dump
+        id: dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Backup skipped::No DATABASE_URL secret is configured, so there is no database to back up yet. Add the repository secret to enable the nightly dump."
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          # `bash` rather than `./scripts/...`: the executable bit is a git
+          # mode bit and is not something a Windows checkout can promise.
+          bash scripts/backup-db.sh
+      - name: Store the copy
+        if: steps.dump.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: northline-backup-${{ github.run_id }}
+          path: backups/*
+          retention-days: 30
+          if-no-files-found: error
+
+  drill:
+    name: Backup and restore drill
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      # auth.ts rejects a secret shorter than 32 characters, so this must
+      # clear that bar or every authenticated request returns 500.
+      JWT_SECRET: ci-only-secret-change-me-0123456789abcdef
+      SOURCE_DATABASE_URL: mysql://northline:northline@127.0.0.1:3306/northline_drill_source
+      RESTORED_DATABASE_URL: mysql://northline:northline@127.0.0.1:3306/northline_drill_restored
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: northline_test
+          MARIADB_USER: northline
+          MARIADB_PASSWORD: northline
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install the MariaDB client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mariadb-client
+      - run: pnpm install --frozen-lockfile
+      # The service container only grants `northline` the one database it was
+      # given, so the drill needs its pair created and handed over first.
+      - name: Create the drill databases
+        run: |
+          mariadb -h 127.0.0.1 -P 3306 -uroot -proot <<'SQL'
+          CREATE DATABASE IF NOT EXISTS northline_drill_source;
+          CREATE DATABASE IF NOT EXISTS northline_drill_restored;
+          GRANT ALL PRIVILEGES ON northline_drill_source.* TO 'northline'@'%';
+          GRANT ALL PRIVILEGES ON northline_drill_restored.* TO 'northline'@'%';
+          SQL
+      - name: Seed the source database
+        env:
+          DATABASE_URL: ${{ env.SOURCE_DATABASE_URL }}
+        run: |
+          pnpm db:push
+          pnpm db:seed
+      - name: Dump
+        env:
+          DATABASE_URL: ${{ env.SOURCE_DATABASE_URL }}
+          BACKUP_DIR: ./backups
+        run: bash scripts/backup-db.sh
+      # The interlock is what stops a recovery being run over production; here
+      # it has to be named explicitly, which is the point of it.
+      - name: Restore into an isolated database
+        env:
+          CONFIRM_RESTORE: northline_drill_restored
+          RESTORE_DATABASE_URL: ${{ env.RESTORED_DATABASE_URL }}
+        run: bash scripts/restore-db.sh backups/northline-*.sql.gz
+      # The real proof: the suite has to pass against the restored copy, not
+      # against the database the dump came from.
+      - name: Run the suite against the restored copy
+        env:
+          DATABASE_URL: ${{ env.RESTORED_DATABASE_URL }}
+        run: pnpm test
+      - name: Keep the dump for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: northline-drill-dump
+          path: backups/*
+          retention-days: 14
+          if-no-files-found: ignore
