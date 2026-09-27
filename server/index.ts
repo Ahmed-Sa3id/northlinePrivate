@@ -240,7 +240,11 @@ if (
 // the frontend and the integration test walks it against this server, so a
 // path added on one side only fails the suite instead of 404ing in the
 // browser. `/` is served by the SPA fallback above, not here.
-const SPA_LINK_PATHS = [
+//
+// Exported so `server/billing.spa.integration.test.ts` can walk it the same
+// way rather than re-declaring it: a path listed here but missing from the
+// billing test, or vice versa, would otherwise only be caught in the browser.
+export const SPA_LINK_PATHS = [
   "/verify-email",
   "/reset-password",
   "/accept-invitation",
@@ -248,6 +252,14 @@ const SPA_LINK_PATHS = [
   "/privacy",
   "/support",
   "/refunds",
+  // Where Stripe sends the browser once Checkout finishes
+  // (`createCheckoutSession`, `success_url` / `cancel_url`). These are real
+  // URLs the provider navigates to directly, so they must answer 200 — before
+  // this existed a *successful payment* landed the customer on "Cannot GET
+  // /billing/success". They open the Billing panel; see `sectionForPath` in
+  // `web/main.tsx`.
+  "/billing/success",
+  "/billing/cancel",
 ];
 for (const spaPath of SPA_LINK_PATHS) {
   app.get(spaPath, (_req, res, next) => {

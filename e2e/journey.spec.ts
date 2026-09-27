@@ -276,5 +276,21 @@ test.describe("primary journey", () => {
         page.getByRole("link", { name: "Refund & cancellation policy" }),
       ).toBeVisible();
     });
+
+    await test.step("the Stripe return URL survives a direct navigation", async () => {
+      // Stripe's redirect is a fresh document load, not an in-app state
+      // change: it arrives as `page.goto()` would, with no session-side
+      // navigation to lean on. Both halves have to hold or the customer who
+      // has *just paid* lands somewhere wrong — the server must serve the
+      // shell (these used to 404) and the workspace must open Billing from
+      // the pathname rather than the default overview.
+      const success = await page.goto("/billing/success");
+      expect(success?.status()).toBe(200);
+      await expect(page.locator(".billing-panel")).toBeVisible();
+
+      const cancelled = await page.goto("/billing/cancel");
+      expect(cancelled?.status()).toBe(200);
+      await expect(page.locator(".billing-panel")).toBeVisible();
+    });
   });
 });

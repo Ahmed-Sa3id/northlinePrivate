@@ -24,6 +24,28 @@ import {
 } from "./types";
 import "./styles.css";
 
+/**
+ * Stripe navigates the browser straight to these paths once Checkout
+ * finishes (`createCheckoutSession`'s `success_url` / `cancel_url`), so
+ * `SPA_LINK_PATHS` in `server/index.ts` has to serve the shell for them or
+ * a successful payment ends on a 404.
+ *
+ * They are in-app routes to the Billing panel rather than separate screens:
+ * the panel shows the live subscription status, which is exactly what a
+ * customer returning from a payment needs to confirm.
+ */
+const BILLING_RETURN_PATHS = ["/billing/success", "/billing/cancel"];
+
+/**
+ * The section a pathname should open on. Anything not listed falls back to
+ * `overview`, so an unexpected URL keeps the existing default behaviour
+ * rather than inventing a screen for it.
+ */
+function sectionForPath(pathname: string): string {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return BILLING_RETURN_PATHS.includes(path) ? "billing" : "overview";
+}
+
 function Workspace({
   session,
   onLogout,
@@ -32,7 +54,12 @@ function Workspace({
   onLogout: () => void;
 }) {
   const { user } = session;
-  const [section, setSection] = useState("overview");
+  // Lazy initialiser, because the pathname is only meaningful at mount: the
+  // workspace never navigates by URL afterwards (nav clicks set `section`
+  // directly), and re-deriving on every render would undo those clicks.
+  const [section, setSection] = useState(() =>
+    sectionForPath(window.location.pathname),
+  );
   const [projects, setProjects] = useState<Project[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
