@@ -252,12 +252,19 @@ export const SPA_LINK_PATHS = [
   "/privacy",
   "/support",
   "/refunds",
-  // Where Stripe sends the browser once Checkout finishes
-  // (`createCheckoutSession`, `success_url` / `cancel_url`). These are real
-  // URLs the provider navigates to directly, so they must answer 200 — before
-  // this existed a *successful payment* landed the customer on "Cannot GET
-  // /billing/success". They open the Billing panel; see `sectionForPath` in
-  // `web/main.tsx`.
+  // Where Stripe sends the browser when a billing flow finishes. These are
+  // real URLs the provider navigates to directly, so all three must answer
+  // 200 — the server deliberately has no catch-all, and each one used to fall
+  // through to `Cannot GET`:
+  //
+  //   /billing/success, /billing/cancel — `success_url` / `cancel_url` from
+  //     `createCheckoutSession`, so a *successful payment* used to 404.
+  //   /billing — the Customer Portal's `return_url`, at both call sites in
+  //     `platform.ts`, so finishing a card update or cancellation in the
+  //     portal 404ed the same way.
+  //
+  // They open the Billing panel; see `sectionForPath` in `web/main.tsx`.
+  "/billing",
   "/billing/success",
   "/billing/cancel",
 ];

@@ -14,24 +14,31 @@ afterAll(() => {
 });
 
 /**
- * `createCheckoutSession()` sets `success_url` / `cancel_url` to these, so
- * Stripe navigates the browser to them *after the payment has succeeded*.
- * They were missing from `SPA_LINK_PATHS`, and the server has no catch-all
- * by design, so the redirect answered `Cannot GET /billing/success` — a
- * customer paid and landed on a 404.
+ * Stripe navigates the browser to these itself once a billing flow ends, and
+ * the server deliberately has no catch-all, so an unlisted one answers
+ * `Cannot GET` at exactly the moment the customer most needs confirmation:
  *
- * Both the shell and the panel are needed: `SPA_LINK_PATHS` answers the
- * request, and `sectionForPath()` in `web/main.tsx` opens Billing from the
- * pathname, so a refreshed or provider-supplied URL does not silently fall
- * back to the overview.
+ *   /billing/success, /billing/cancel — `createCheckoutSession()`'s
+ *     `success_url` / `cancel_url`, i.e. *after the payment succeeded*.
+ *   /billing — the Customer Portal's `return_url`, set at both call sites in
+ *     `platform.ts`, i.e. after a card update or a cancellation.
+ *
+ * Both halves are needed: `SPA_LINK_PATHS` answers the request, and
+ * `sectionForPath()` in `web/main.tsx` opens Billing from the pathname, so a
+ * refreshed or provider-supplied URL does not silently fall back to the
+ * overview.
  */
-const BILLING_RETURN_PATHS = ["/billing/success", "/billing/cancel"];
+const BILLING_RETURN_PATHS = [
+  "/billing",
+  "/billing/success",
+  "/billing/cancel",
+];
 
-describe("Stripe checkout return routes", () => {
-  it("keeps the checkout return paths in the server allowlist", () => {
+describe("Stripe billing return routes", () => {
+  it("keeps the billing return paths in the server allowlist", () => {
     // Asserted against the exported list rather than a copy of it, so
     // removing a path fails here instead of as a 404 in the browser after a
-    // real payment.
+    // real payment or a portal visit.
     expect([...SPA_LINK_PATHS]).toEqual(
       expect.arrayContaining(BILLING_RETURN_PATHS),
     );
@@ -48,18 +55,14 @@ describe("Stripe checkout return routes", () => {
   );
 
   it("keeps neighbouring paths on a 404 instead of handing them the shell", async () => {
-    // The allowlist admits exactly the two paths Stripe navigates to.
-    // Broadening it to "anything under /billing" — or to a catch-all — would
-    // hand the HTML shell to unlisted paths and turn a JSON 404 into a 200
-    // that reads as success to a client.
-    //
-    // Bare `/billing` is deliberately NOT allowlisted: it is not part of the
-    // Stripe redirect, nothing links to it as a URL (the nav sets the section
-    // in-page), and adding it is a separate decision from fixing the redirect.
+    // The allowlist admits exactly the three paths Stripe navigates to — no
+    // more. Broadening it to "anything under /billing", or to a catch-all,
+    // would hand the HTML shell to unlisted paths and turn a JSON 404 into a
+    // 200 that reads as success to a client.
     for (const path of [
-      "/billing",
       "/billing/nope",
       "/billing/success/extra",
+      "/billingsettings",
     ]) {
       const response = await request(app).get(path);
       expect(response.status, `${path} must stay 404`).toBe(404);

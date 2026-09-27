@@ -25,16 +25,24 @@ import {
 import "./styles.css";
 
 /**
- * Stripe navigates the browser straight to these paths once Checkout
- * finishes (`createCheckoutSession`'s `success_url` / `cancel_url`), so
- * `SPA_LINK_PATHS` in `server/index.ts` has to serve the shell for them or
- * a successful payment ends on a 404.
+ * Stripe navigates the browser straight to these paths once a billing flow
+ * finishes, so `SPA_LINK_PATHS` in `server/index.ts` has to serve the shell
+ * for them or the flow ends on a 404:
+ *
+ *   /billing/success, /billing/cancel — Checkout's `success_url` /
+ *     `cancel_url`, i.e. the customer who has *just paid*.
+ *   /billing — the Customer Portal's `return_url`, so the person who has
+ *     just updated a card or cancelled.
  *
  * They are in-app routes to the Billing panel rather than separate screens:
- * the panel shows the live subscription status, which is exactly what a
- * customer returning from a payment needs to confirm.
+ * the panel shows the live subscription status, which is exactly what
+ * someone returning from a payment or the portal needs to confirm.
  */
-const BILLING_RETURN_PATHS = ["/billing/success", "/billing/cancel"];
+const BILLING_RETURN_PATHS = [
+  "/billing",
+  "/billing/success",
+  "/billing/cancel",
+];
 
 /**
  * The section a pathname should open on. Anything not listed falls back to

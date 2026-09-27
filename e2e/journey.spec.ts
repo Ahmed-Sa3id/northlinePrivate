@@ -291,6 +291,13 @@ test.describe("primary journey", () => {
       const cancelled = await page.goto("/billing/cancel");
       expect(cancelled?.status()).toBe(200);
       await expect(page.locator(".billing-panel")).toBeVisible();
+
+      // The Customer Portal's `return_url`, at both call sites in
+      // `platform.ts`. This is the leg that survived checkout's fix and still
+      // 404ed, because it was never part of the checkout redirect.
+      const portal = await page.goto("/billing");
+      expect(portal?.status()).toBe(200);
+      await expect(page.locator(".billing-panel")).toBeVisible();
     });
   });
 });
