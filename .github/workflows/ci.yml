@@ -34,9 +34,13 @@ jobs:
       JWT_SECRET: ci-only-secret-change-me-0123456789abcdef
     steps:
       - uses: actions/checkout@v4
+      # No `version:` input here on purpose. package.json pins
+      # `"packageManager": "pnpm@10.4.1+sha512..."`, and pnpm/action-setup@v4
+      # refuses to start when both are present — the first run died with
+      # "Error: Multiple versions of pnpm specified ... Remove one of these".
+      # Letting the action read packageManager keeps one source of truth and
+      # keeps the integrity hash.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10.4.1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
