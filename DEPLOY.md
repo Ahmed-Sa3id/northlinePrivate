@@ -28,6 +28,7 @@ Open the app service's **Variables** tab and add these values. Use Railway's ref
 | `LOGIN_RATE_WINDOW_MS`    | `900000`                                                                 |
 | `LOGIN_RATE_MAX_ATTEMPTS` | `10`                                                                     |
 | `LOGIN_RATE_BLOCK_MS`     | `900000`                                                                 |
+| `LOGIN_RATE_REPROBE_MS`   | `60000`                                                                  |
 | `LOG_LEVEL`               | `info` (`debug` \| `info` \| `warn` \| `error`)                           |
 | `METRICS_TOKEN`           | A random bearer token — **required for `/metrics` in production**        |
 | `SENTRY_DSN`              | Sentry DSN, once a project exists (optional)                             |
@@ -47,6 +48,18 @@ and malformed payloads still accumulate exactly as before. The buckets live in t
 `rate_limit_buckets` table guarded by an advisory lock, so the count is shared across
 replicas; watch `northline_rate_limit_shared_store_enabled` (see `docs/OBSERVABILITY.md`)
 to confirm a replica has not silently dropped to per-process memory.
+
+**`LOGIN_RATE_REPROBE_MS` is the one that is not a limit.** When the bucket operation
+itself fails — an advisory-lock error, an unreadable row — the replica drops to
+process-local buckets and that gauge reads `0`. It used to stay there until a restart; it
+now waits `LOGIN_RATE_REPROBE_MS` and then asks the shared store again, restoring
+cross-instance throttling on the first success. A failed re-probe restarts the window, so
+a sustained outage costs at most one probe per window per replica and never one per
+request. Attempts counted while degraded are handed to the shared bucket on the way back
+in, so recovery can never be used to reset a lockout in progress — and sign-ins are not
+skipped during the gap either, because the failures that degrade the switch are bucket
+failures rather than database failures, so a user who proved their password must not come
+back to a counter they had already earned back.
 
 Do not add `.env` to Git. `PORT` is intentionally omitted: Railway injects it at runtime, and `server/index.ts` binds to `process.env.PORT` with a local fallback only for development. The production cookie configuration evaluates `secure: true` when `NODE_ENV=production`.
 
@@ -97,7 +110,7 @@ The four legal documents — `/terms`, `/privacy`, `/support` and `/refunds` —
 
 The migration history in `drizzle/` is additive and must be applied before starting a new environment. If a target database already contains a different WebDev scaffold migration journal, do not force the Northline migrations over it; provision a clean database or reconcile the schemas with a reviewed migration. Run the backup/restore drill described in `BACKUP-RESTORE.md` before accepting production traffic; drill results are recorded in [`docs/BACKUP_DRILL.md`](./docs/BACKUP_DRILL.md). Drill #1 passed on 2026-09-26.
 
-The login and registration limiter uses the `rate_limit_buckets` table when the database is available, which makes throttling shared across replicas. It falls back to a bounded process-local bucket only during database outages, so database health alerts remain important. That fallback is a one-way switch for the life of the process, so it is surfaced explicitly: `northline_rate_limit_shared_store_enabled` reads `1` while the shared store is in use and `0` after any failure, and `northline_rate_limit_fallback_total{code}` records the reason. Alert on either.
+The login and registration limiter uses the `rate_limit_buckets` table when the database is available, which makes throttling shared across replicas. It falls back to a bounded process-local bucket only while that store is failing, so database health alerts remain important. The fallback is no longer permanent: after `LOGIN_RATE_REPROBE_MS` (default 60s) the next sign-in asks the shared store again and restores cross-instance throttling on the first success, while a failed probe restarts the window so an outage costs at most one probe per window. It is surfaced explicitly for the whole degraded period — `northline_rate_limit_shared_store_enabled` reads `1` while the shared store is in use and `0` from any failure until a re-probe succeeds, and `northline_rate_limit_fallback_total{code}` records the reason on every attempt. Alert on either: a `0` that does not clear within a window is a real outage rather than a process waiting to be restarted.
 
 ## 6. Observability
 

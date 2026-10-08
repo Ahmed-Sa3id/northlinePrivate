@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `platformRole` enum('none','admin') DEFAULT 'none' NOT NULL;

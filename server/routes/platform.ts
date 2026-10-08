@@ -22,6 +22,7 @@ import {
   emailVerificationTokens,
   passwordResetTokens,
   billingEvents,
+  type PlatformAdminRole,
   type PlatformRole,
   type User,
   users,
@@ -107,6 +108,9 @@ const positiveQuantitySchema = z.coerce
   .finite()
   .positive()
   .transform((value) => value.toFixed(3));
+
+/** Tenant status a platform admin may set — the only writer of `companies.status`. */
+const companyStatusSchema = z.enum(["active", "suspended"]);
 
 const loginSchema = z.object({
   email: emailSchema,
@@ -258,6 +262,22 @@ export function hasRole(
 ) {
   return Boolean(user && allowedRoles.includes(user.role as PlatformRole));
 }
+
+const PLATFORM_ADMIN_ROLE: PlatformAdminRole = "admin";
+
+/**
+ * Platform-wide (Northline operator) authority.
+ *
+ * Deliberately never derived from `hasRole()`: `users.role` is the role a user
+ * holds *inside their own company*, so a tenant's `admin` must not be able to
+ * reach another tenant. Only the dedicated `users.platformRole` column grants
+ * this, and it is read server-side from the authenticated row.
+ */
+export function hasPlatformAdmin(
+  user: Pick<User, "platformRole"> | null | undefined,
+) {
+  return user?.platformRole === PLATFORM_ADMIN_ROLE;
+}
 export function canCreateAttendanceFor(
   user: Pick<User, "role" | "uuid">,
   targetUserId: string,
@@ -313,6 +333,45 @@ function requireRole(allowedRoles: PlatformRole[]) {
       return next();
     })().catch(next);
   };
+}
+
+/**
+ * Platform-wide gate for Northline operators.
+ *
+ * Deliberately does not reuse `requireRole()`, which is company scoped: it
+ * rejects anyone whose own company is suspended. A platform admin must still
+ * be able to act on a suspended tenant, so authentication, email verification
+ * and `platformRole` are checked here while the caller's own company status is
+ * never consulted.
+ */
+function requirePlatformAdmin(req: Request, res: Response, next: NextFunction) {
+  void (async () => {
+    const user = await authenticateAnyRequest(req);
+    if (!user)
+      return res.status(401).json({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Authentication required",
+        },
+      });
+    if (!hasPlatformAdmin(user))
+      return res.status(403).json({
+        error: {
+          code: "FORBIDDEN",
+          message: "Platform administrator access is required",
+        },
+      });
+    if (!user.emailVerifiedAt)
+      return res.status(403).json({
+        error: {
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Email verification is required",
+        },
+      });
+    (req as AuthenticatedRequest).platformUser = user;
+    res.locals.user = user;
+    return next();
+  })().catch(next);
 }
 
 function currentUser(req: AuthenticatedRequest) {
@@ -967,6 +1026,70 @@ export function registerPlatformRoutes(app: Express) {
       } catch {
         return notFound(res, "File");
       }
+    }),
+  );
+
+  /**
+   * Platform administration surface. Everything here is cross-tenant, so each
+   * route is guarded by `requirePlatformAdmin` rather than `requireRole`:
+   * holding `role: "admin"` inside a company is explicitly not enough.
+   */
+  app.get(
+    "/platform/companies",
+    requirePlatformAdmin,
+    asyncHandler(async (_req, res) => {
+      const db = await getDb();
+      if (!db)
+        return res.status(503).json({
+          error: {
+            code: "DATABASE_UNAVAILABLE",
+            message: "Database is unavailable",
+          },
+        });
+      const rows = await db
+        .select({
+          id: companies.id,
+          name: companies.name,
+          email: companies.email,
+          status: companies.status,
+          createdAt: companies.createdAt,
+          updatedAt: companies.updatedAt,
+        })
+        .from(companies)
+        .orderBy(companies.name);
+      return res.json({ companies: rows });
+    }),
+  );
+
+  app.patch(
+    "/platform/companies/:id/status",
+    requirePlatformAdmin,
+    asyncHandler(async (req, res) => {
+      const companyId = parseParamId(req, res);
+      if (!companyId) return;
+      const parsed = companyStatusSchema.safeParse(req.body?.status);
+      if (!parsed.success) return validationError(res, parsed.error);
+      const db = await getDb();
+      if (!db)
+        return res.status(503).json({
+          error: {
+            code: "DATABASE_UNAVAILABLE",
+            message: "Database is unavailable",
+          },
+        });
+      const existing = await db
+        .select({ id: companies.id })
+        .from(companies)
+        .where(eq(companies.id, companyId))
+        .limit(1);
+      if (!existing.length) return notFound(res, "Company");
+      await db
+        .update(companies)
+        .set({ status: parsed.data })
+        .where(eq(companies.id, companyId));
+      const company = await getCompanyById(companyId);
+      if (!company) return notFound(res, "Company");
+      return res.json({ company });
     }),
   );
 

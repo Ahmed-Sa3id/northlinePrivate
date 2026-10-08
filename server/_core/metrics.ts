@@ -409,8 +409,12 @@ export const dbPoolLimit = metrics.gauge(
 
 /**
  * Login throttling degrades silently otherwise: when the shared store throws,
- * the process switches to in-process buckets and never switches back. This
- * gauge makes that state scrapeable, and the counter records why it happened.
+ * the process falls back to in-process buckets and cross-instance throttling
+ * is off. This gauge makes that state scrapeable — it reads 0 for exactly as
+ * long as the store is out of play, and returns to 1 on a successful re-probe,
+ * so a transient blip is visible and self-repairing rather than permanent —
+ * and the counter records why it fell, by database error code, on every
+ * attempt including each failed re-probe.
  */
 export const rateLimitSharedStore = metrics.gauge(
   "northline_rate_limit_shared_store_enabled",

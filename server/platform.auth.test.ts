@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { User } from "../drizzle/schema";
 import { hashPassword, verifyPassword } from "./auth";
 import { publicUser } from "./db";
-import { hasRole } from "./routes/platform";
+import { hasPlatformAdmin, hasRole } from "./routes/platform";
 
 const sampleUser: User = {
   id: 1,
@@ -14,6 +14,7 @@ const sampleUser: User = {
   passwordHash: "stored-hash",
   loginMethod: "credentials",
   role: "worker",
+  platformRole: "none",
   createdAt: new Date(),
   updatedAt: new Date(),
   lastSignedIn: new Date(),
@@ -37,6 +38,25 @@ describe("platform authentication", () => {
     expect(hasRole({ role: "worker" }, ["admin"])).toBe(false);
     expect(hasRole({ role: "user" }, ["admin"])).toBe(false);
     expect(hasRole(null, ["admin"])).toBe(false);
+  });
+
+  it("keeps platform authority separate from the company role", () => {
+    const companyAdmin: User = { ...sampleUser, role: "admin" };
+    const platformAdmin: User = {
+      ...sampleUser,
+      role: "admin",
+      platformRole: "admin",
+    };
+
+    expect(hasPlatformAdmin(sampleUser)).toBe(false);
+    // Being an `admin` inside a tenant must never imply platform authority.
+    expect(hasPlatformAdmin(companyAdmin)).toBe(false);
+    expect(hasPlatformAdmin(platformAdmin)).toBe(true);
+    expect(hasPlatformAdmin({ ...sampleUser, platformRole: "admin" })).toBe(
+      true,
+    );
+    expect(hasPlatformAdmin(null)).toBe(false);
+    expect(hasPlatformAdmin(undefined)).toBe(false);
   });
 
   it("removes password hashes from public user records", () => {

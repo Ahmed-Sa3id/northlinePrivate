@@ -74,8 +74,8 @@ Verified by `server/observability.integration.test.ts`:
 | `northline_db_pool_limit` | gauge | configured `connectionLimit` |
 | `northline_health_checks_total{result}` | counter | `ok` / `unhealthy` / `unavailable` |
 | `northline_readyz_failures_total` | counter | readiness flapping |
-| `northline_rate_limit_shared_store_enabled` | gauge | `1` shared DB store, `0` degraded to memory |
-| `northline_rate_limit_fallback_total{code}` | counter | why the limiter degraded, by MariaDB error code |
+| `northline_rate_limit_shared_store_enabled` | gauge | `1` shared DB store, `0` degraded to memory — returns to `1` on a successful re-probe |
+| `northline_rate_limit_fallback_total{code}` | counter | why the limiter degraded, and every failed re-probe, by MariaDB error code |
 | `northline_email_sends_total{flow,result}` | counter | transactional mail that never arrived |
 
 **Label sets are closed.** `flow` is `verification` | `password-reset` |
@@ -114,7 +114,11 @@ northline_http_request_duration_seconds_p95 > 1
 # readiness flapping
 increase(northline_readyz_failures_total[15m]) > 3
 
-# login throttling has silently dropped to per-process memory
+# login throttling is on per-process memory, or has degraded recently.
+# A transient blip self-repairs after LOGIN_RATE_REPROBE_MS (default 60s), so a
+# 0 that survives longer than that window means the store is genuinely
+# unreachable — while a rise in the counter is worth a look even if the gauge
+# has already recovered, because it shows the outage happened at all.
 northline_rate_limit_shared_store_enabled == 0
   or increase(northline_rate_limit_fallback_total[1h]) > 0
 
@@ -178,7 +182,7 @@ instances, and not after a restart.
 | **Lock name overflow** | every `GET_LOCK` raised `ER_TOO_LONG_IDENT` | `northline-rate:` + path + IPv6-mapped client address + a normal email is **~69 bytes** against MariaDB's 64-byte ceiling — so *no* login ever used the shared store |
 | **Bucket key overflow** | the `INSERT` raised `ER_DATA_TOO_LONG` | `rate_limit_buckets.key` is `varchar(512)` but `clientKey` embedded the submitted email unbounded — an **unauthenticated one-request** way to permanently degrade throttling |
 
-Both hit the same `catch`, which sets a process-wide one-way flag. The fixes:
+Both hit the same `catch`, which flips a process-wide flag. The fixes:
 
 - `toLockName()` (`server/lock.ts`) passes short names through untouched and
   substitutes a SHA-256 digest over 64 bytes — protecting all three lock call sites.
@@ -186,9 +190,15 @@ Both hit the same `catch`, which sets a process-wide one-way flag. The fixes:
 - The degradation itself is now observable (`northline_rate_limit_shared_store_enabled`
   and `northline_rate_limit_fallback_total`), so a future failure is an alert rather
   than a silent loss of cross-instance throttling.
+- The flag is no longer one-way. After `LOGIN_RATE_REPROBE_MS` the next sign-in
+  re-probes the store and restores shared throttling on the first success; a failed
+  probe restarts the window, so an outage costs at most one probe per window rather
+  than one per request. Attempts counted in memory are carried into the shared bucket
+  on recovery, so re-probing cannot be used to reset a lockout in progress.
 
-Regression coverage: `server/lock.unit.test.ts` and
-`server/rateLimit.store.integration.test.ts`.
+Regression coverage: `server/lock.unit.test.ts`,
+`server/rateLimit.store.integration.test.ts` and
+`server/rateLimit.reprobe.integration.test.ts`.
 
 ---
 

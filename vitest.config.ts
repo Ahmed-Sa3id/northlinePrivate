@@ -36,6 +36,15 @@ export default defineConfig({
       LOG_LEVEL: "warn",
       RESEND_API_KEY: "",
       EMAIL_FROM: "",
+      // Same value ci.yml exports at the job level. `server/db.ts` imports
+      // `./_core/env`, which snapshots `JWT_SECRET` when the module evaluates,
+      // while `dotenv` only runs as the first statement of `server/index.ts`.
+      // A worker whose first local import is `./db` would therefore capture an
+      // empty secret and every login would 500 with "JWT_SECRET must be at
+      // least 32 characters" — passing only when an earlier file in that worker
+      // happened to load dotenv first. Pinning it here makes the suite
+      // order-independent; dotenv's no-override rule keeps it stable.
+      JWT_SECRET: "ci-only-secret-change-me-0123456789abcdef",
     },
     maxWorkers,
     // Tinypool rejects a `maxThreads` below its default `minThreads`, so the

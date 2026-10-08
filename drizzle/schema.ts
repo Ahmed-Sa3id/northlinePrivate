@@ -21,6 +21,17 @@ export const platformRoles = [
 ] as const;
 export type PlatformRole = (typeof platformRoles)[number];
 
+/**
+ * Northline-operator authority, held across every tenant.
+ *
+ * Deliberately a separate enum from `platformRoles` above: despite that name,
+ * those are the roles a user holds *inside their own company*, so a company's
+ * `admin` is not and must never become a platform admin. Nothing derives this
+ * from `role` — it is granted per user and checked server-side.
+ */
+export const platformAdminRoles = ["none", "admin"] as const;
+export type PlatformAdminRole = (typeof platformAdminRoles)[number];
+
 export const companies = mysqlTable(
   "companies",
   {
@@ -118,6 +129,14 @@ export const users = mysqlTable(
     loginMethod: varchar("loginMethod", { length: 64 }),
     role: mysqlEnum("role", ["user", ...platformRoles])
       .default("worker")
+      .notNull(),
+    /**
+     * Platform-wide authority (`platformAdminRoles`), independent of `role`.
+     * Defaults to `none`, so granting a company `admin` never implies
+     * platform-level access.
+     */
+    platformRole: mysqlEnum("platformRole", platformAdminRoles)
+      .default("none")
       .notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
